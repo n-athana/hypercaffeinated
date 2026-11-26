@@ -86,10 +86,12 @@ done
 cat > "$BIN" <<'DAEMON'
 #!/bin/bash
 # hypercaffeinatedd: applies ~/NoSleep/state as root. Started by launchd.
+# Files in ~/NoSleep are only ever read and written as the user, never as root.
 set -u
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
 
 U="${1:?user}"
+as_user() { /usr/bin/sudo -n -u "$U" -- "$@"; }
 MIN_BATT="${2:-20}"; MAX_HOURS="${3:-12}"
 case "$MIN_BATT"  in ''|*[!0-9]*) MIN_BATT=20 ;; esac
 case "$MAX_HOURS" in ''|*[!0-9]*) MAX_HOURS=12 ;; esac
@@ -102,14 +104,15 @@ mkdir -p "$DB"; chmod 700 "$DB"
 # Only act on a real folder owned by the user (not a symlink).
 [ -d "$DIR" ] && [ ! -L "$DIR" ] && [ "$(stat -f %Su "$DIR")" = "$U" ] || exit 0
 
-safe_write() {  # write as a new file and mv it into place (never follows symlinks)
-  local t; t=$(mktemp "$DIR/.tmp.XXXXXX") || return 0
-  printf '%s\n' "$2" > "$t"; chown "$U" "$t"; chmod 644 "$t"; mv -f "$t" "$1"
+safe_write() {  # as the user: write a new file and mv it into place (root never touches it)
+  printf '%s\n' "$2" | as_user /bin/sh -c \
+    't=$(mktemp "$1/.tmp.XXXXXX") || exit 0; cat > "$t" && chmod 644 "$t" && mv -f "$t" "$2" || { rm -f "$t"; exit 1; }' \
+    sh "$DIR" "$1" || true
 }
 
 want=off
 if [ -f "$STATE" ] && [ ! -L "$STATE" ]; then
-  v=$(head -c 16 "$STATE" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+  v=$(as_user /usr/bin/head -c 16 "$STATE" 2>/dev/null | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
   [ "$v" = on ] && want=on
 fi
 
@@ -212,7 +215,7 @@ if [ "$cmd" != status ]; then
 fi
 cat "$D/status" 2>/dev/null || echo "No status yet (is the daemon installed?)"
 HELPER
-chmod 755 "$H/NoSleep/nosleep"
+sudo -u "$U" chmod 755 "$H/NoSleep/nosleep"
 
 cat > "$PLIST" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
@@ -234,5 +237,5 @@ launchctl bootstrap system "$PLIST"
 sleep 2
 echo "☕☕☕ hypercaffeinated installed (auto-off at ${MIN_BATT}% battery, after ${MAX_HOURS}h or when running hot)."
 echo "Low-power key on this Mac: $(pmset -g custom | grep -ow 'lowpowermode\|powermode' | head -1 || echo none)"
-cat "$H/NoSleep/status" 2>/dev/null || true
+sudo -u "$U" cat "$H/NoSleep/status" 2>/dev/null || true
 echo "Toggle with: ~/NoSleep/nosleep on | off | toggle | status"

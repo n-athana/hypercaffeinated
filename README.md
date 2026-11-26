@@ -177,7 +177,8 @@ to be careful about, so the daemon is deliberately boring:
 - It reads at most 16 bytes from the flag and only compares them to `on`. It never executes,
   sources or interpolates anything from your files.
 - It ignores the folder and the flag if they're symlinks, or if the folder isn't owned by you.
-- It writes the status via `mktemp` + `mv`, so it can't be tricked into writing through a link.
+- It never opens or changes anything in `~/NoSleep` as root: the flag is read and the status written as you
+  (`sudo -u`, via `mktemp` + `mv`), so a swapped symlink can only reach files you could already change.
 - The installer refuses to install if `/usr/local/sbin` is writable by anyone but root.
 - Blast radius: any process running as your user can keep your Mac awake. That's the feature,
   and it's also all it can do.
