@@ -91,7 +91,23 @@ set -u
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
 
 U="${1:?user}"
-as_user() { /usr/bin/sudo -n -u "$U" -- "$@"; }
+
+# Run a command, but never wait longer than $1 seconds for it. Anything running as the user can
+# stall our user-level helpers (a named pipe swapped in, SIGSTOP), and a stuck daemon would stop
+# checking the guards. So root keeps the clock and kills the whole process group.
+time_limit() {
+  /usr/bin/perl -e '
+    my $secs = shift;
+    my $pid = fork();
+    defined $pid or exit 125;
+    if (!$pid) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV; exit 127 }
+    $SIG{ALRM} = sub { kill "KILL", -$pid, $pid };
+    alarm $secs;
+    waitpid $pid, 0;
+    exit($? ? 1 : 0);
+  ' "$@"
+}
+as_user() { time_limit 10 /usr/bin/sudo -n -u "$U" -- "$@"; }
 MIN_BATT="${2:-20}"; MAX_HOURS="${3:-12}"
 case "$MIN_BATT"  in ''|*[!0-9]*) MIN_BATT=20 ;; esac
 case "$MAX_HOURS" in ''|*[!0-9]*) MAX_HOURS=12 ;; esac
