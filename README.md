@@ -179,6 +179,8 @@ to be careful about, so the daemon is deliberately boring:
 - It ignores the folder and the flag if they're symlinks, or if the folder isn't owned by you.
 - It never opens or changes anything in `~/NoSleep` as root: the flag is read and the status written as you
   (`sudo -u`, via `mktemp` + `mv`), so a swapped symlink can only reach files you could already change.
+- Each of those reads and writes has a 10 s time limit, so a named pipe or a paused helper process can't
+  leave the daemon stuck and unable to check the guards.
 - The installer refuses to install if `/usr/local/sbin` is writable by anyone but root.
 - Blast radius: any process running as your user can keep your Mac awake. That's the feature,
   and it's also all it can do.
@@ -204,8 +206,13 @@ and Low Power Mode help; a bag in the sun doesn't.
 `osascript`. If that ever fails, the status line shows `thermal: unknown` and the guard **cannot
 trip**; the battery and time guards keep working.
 
-**Already installed?** Pull and run `sudo bash install.sh` again to get new guards. Pass your
+**Already installed?** Pull and run `sudo bash install.sh` again to get new guards and fixes. Pass your
 `--min-batt` / `--max-hours` options again if you use them.
+
+> **Security update, 26 November 2026: please reinstall.** In earlier versions, a process running as
+> you could try to trick the root daemon into changing files outside `~/NoSleep`, which could give it
+> root access. It could also leave the daemon stuck, so that the guards stopped running. Both are
+> fixed, but pulling alone doesn't update the installed daemon: run `sudo bash install.sh` again.
 
 **Can I run it permanently?** You can, but don't. The 12 h guard exists because you will forget.
 
